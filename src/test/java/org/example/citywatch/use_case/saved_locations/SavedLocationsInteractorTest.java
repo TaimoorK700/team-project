@@ -1,6 +1,17 @@
 package org.example.citywatch.use_case.saved_locations;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import org.example.citywatch.entity.Bookmark;
+import org.example.citywatch.entity.IncidentKey;
+import org.example.citywatch.entity.IncidentSource;
 import org.example.citywatch.entity.SavedLocation;
+import org.example.citywatch.entity.TransitSubscription;
+import org.example.citywatch.entity.UserProfile;
 import org.example.citywatch.test_support.InMemoryProfileRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,10 +45,10 @@ class SavedLocationsInteractorTest {
     void addsAValidLocation() {
         interactor.add(input(" Home ", "43.66", "-79.39", "500"));
 
-        SavedLocation saved = repository.loadSavedLocations().get(0);
+        SavedLocation saved = savedLocations().get(0);
         assertEquals("Home", saved.getLabel());
-        assertEquals(43.66, saved.getLatitude(), 0.000001);
-        assertEquals(-79.39, saved.getLongitude(), 0.000001);
+        assertEquals(43.66, saved.getCoordinates().getLatitude(), 0.000001);
+        assertEquals(-79.39, saved.getCoordinates().getLongitude(), 0.000001);
         assertEquals(500, saved.getRadiusMetres(), 0.000001);
         assertFalse(saved.getId().isBlank());
         assertEquals(1, output.data.locations.size());
@@ -47,20 +58,20 @@ class SavedLocationsInteractorTest {
     @Test
     void editsWithoutChangingTheIdOrOtherLocations() {
         interactor.add(input("Home", "43", "-79", "500"));
-        String id = repository.loadSavedLocations().get(0).getId();
+        String id = savedLocations().get(0).getId();
 
         interactor.add(input("Work", "44", "-78", "200"));
-        SavedLocation work = repository.loadSavedLocations().get(1);
+        SavedLocation work = savedLocations().get(1);
 
         interactor.edit(id, input("University", "45", "-77", "1000"));
 
-        SavedLocation edited = repository.loadSavedLocations().get(0);
+        SavedLocation edited = savedLocations().get(0);
         assertEquals(id, edited.getId());
         assertEquals("University", edited.getLabel());
-        assertEquals(45, edited.getLatitude(), 0.000001);
-        assertEquals(-77, edited.getLongitude(), 0.000001);
+        assertEquals(45, edited.getCoordinates().getLatitude(), 0.000001);
+        assertEquals(-77, edited.getCoordinates().getLongitude(), 0.000001);
         assertEquals(1000, edited.getRadiusMetres(), 0.000001);
-        assertSame(work, repository.loadSavedLocations().get(1));
+        assertSame(work, savedLocations().get(1));
         assertEquals(2, output.data.locations.size());
         assertNull(output.error);
     }
@@ -68,15 +79,15 @@ class SavedLocationsInteractorTest {
     @Test
     void deletesOnlyTheSelectedLocation() {
         interactor.add(input("Home", "43", "-79", "500"));
-        String homeId = repository.loadSavedLocations().get(0).getId();
+        String homeId = savedLocations().get(0).getId();
 
         interactor.add(input("Work", "44", "-78", "200"));
-        String workId = repository.loadSavedLocations().get(1).getId();
+        String workId = savedLocations().get(1).getId();
 
         interactor.delete(homeId);
 
-        assertEquals(1, repository.loadSavedLocations().size());
-        assertEquals(workId, repository.loadSavedLocations().get(0).getId());
+        assertEquals(1, savedLocations().size());
+        assertEquals(workId, savedLocations().get(0).getId());
         assertEquals(1, output.data.locations.size());
         assertNull(output.error);
     }
@@ -106,20 +117,20 @@ class SavedLocationsInteractorTest {
     void rejectsInvalidAddsAndEdits(String label, String latitude,
                                     String longitude, String radius) {
         interactor.add(input("Existing", "43", "-79", "100"));
-        SavedLocation existing = repository.loadSavedLocations().get(0);
+        SavedLocation existing = savedLocations().get(0);
         SavedLocationsInputData invalid =
                 input(label, latitude, longitude, radius);
 
         interactor.add(invalid);
 
         assertNotNull(output.error);
-        assertEquals(1, repository.loadSavedLocations().size());
-        assertSame(existing, repository.loadSavedLocations().get(0));
+        assertEquals(1, savedLocations().size());
+        assertSame(existing, savedLocations().get(0));
 
         interactor.edit(existing.getId(), invalid);
 
         assertNotNull(output.error);
-        assertSame(existing, repository.loadSavedLocations().get(0));
+        assertSame(existing, savedLocations().get(0));
     }
 
     @ParameterizedTest
@@ -127,7 +138,7 @@ class SavedLocationsInteractorTest {
     void acceptsCoordinateBoundaries(String latitude, String longitude) {
         interactor.add(input("Boundary", latitude, longitude, "0.01"));
 
-        assertEquals(1, repository.loadSavedLocations().size());
+        assertEquals(1, savedLocations().size());
         assertNull(output.error);
     }
 
@@ -138,26 +149,67 @@ class SavedLocationsInteractorTest {
 
         interactor.delete("missing");
         assertNotNull(output.error);
-        assertTrue(repository.loadSavedLocations().isEmpty());
+        assertTrue(savedLocations().isEmpty());
     }
 
     @Test
     void failedSavesLeaveStoredLocationsUnchanged() {
         interactor.add(input("Home", "43", "-79", "500"));
-        SavedLocation original = repository.loadSavedLocations().get(0);
+        SavedLocation original = savedLocations().get(0);
         repository.setFailOnSave(true);
 
         interactor.edit(original.getId(), input("Changed", "44", "-78", "100"));
         assertNotNull(output.error);
-        assertSame(original, repository.loadSavedLocations().get(0));
+        assertSame(original, savedLocations().get(0));
 
         interactor.delete(original.getId());
         assertNotNull(output.error);
-        assertSame(original, repository.loadSavedLocations().get(0));
+        assertSame(original, savedLocations().get(0));
 
         interactor.add(input("Work", "44", "-78", "200"));
         assertNotNull(output.error);
-        assertEquals(1, repository.loadSavedLocations().size());
+        assertEquals(1, savedLocations().size());
+    }
+
+    @Test
+    void locationChangesPreserveOtherProfileData() throws Exception {
+        IncidentKey key = new IncidentKey(
+                IncidentSource.TORONTO_ROAD, "report-1");
+
+        Bookmark bookmark = new Bookmark(
+                key,
+                Instant.parse("2026-11-17T12:00:00Z"),
+                Optional.of("update-1"));
+
+        TransitSubscription subscription = new TransitSubscription(
+                TransitSubscription.Type.ROUTE,
+                "501",
+                "Queen",
+                Set.of());
+
+        UserProfile original = UserProfile.empty("test-profile")
+                .withTransitSubscriptions(Set.of(subscription))
+                .withBookmarks(Map.of(key, bookmark));
+
+        repository.save(original);
+
+        interactor.add(input("Home", "43.66", "-79.39", "500"));
+
+        UserProfile updated = repository.load().orElseThrow();
+
+        assertNull(output.error);
+        assertEquals(original.getId(), updated.getId());
+        assertEquals(1, updated.getSavedLocations().size());
+        assertSame(original.getPreferences(), updated.getPreferences());
+        assertEquals(original.getTransitSubscriptions(),
+                updated.getTransitSubscriptions());
+        assertEquals(original.getBookmarks(), updated.getBookmarks());
+    }
+
+    private List<SavedLocation> savedLocations() {
+        return repository.load()
+                .map(UserProfile::getSavedLocations)
+                .orElseGet(List::of);
     }
 
     private static SavedLocationsInputData input(

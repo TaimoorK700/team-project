@@ -5,9 +5,11 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+import org.example.citywatch.entity.Coordinates;
 import org.example.citywatch.entity.SavedLocation;
+import org.example.citywatch.entity.UserProfile;
+import org.example.citywatch.use_case.gateway.DataAccessException;
 import org.example.citywatch.use_case.gateway.ProfileRepository;
-import org.example.citywatch.use_case.gateway.ProfileStorageException;
 
 public final class SavedLocationsInteractor implements SavedLocationsInputBoundary {
     private final ProfileRepository repository;
@@ -21,17 +23,18 @@ public final class SavedLocationsInteractor implements SavedLocationsInputBounda
 
     @Override
     public void load() {
-        List<SavedLocation> locations;
+        UserProfile profile;
 
         try {
-            locations = repository.loadSavedLocations();
+            profile = loadProfile();
         }
-        catch (ProfileStorageException exception) {
+        catch (DataAccessException exception) {
             output.presentError(exception.getMessage());
             return;
         }
 
-        output.presentLocations(new SavedLocationsOutputData(locations));
+        output.presentLocations(
+                new SavedLocationsOutputData(profile.getSavedLocations()));
     }
 
     @Override
@@ -44,8 +47,6 @@ public final class SavedLocationsInteractor implements SavedLocationsInputBounda
     public void edit(String locationId, SavedLocationsInputData input) {
         update(locations -> {
             int index = findIndex(locations, locationId);
-
-            // Reuse the existing ID when replacing the location.
             locations.set(index, createLocation(locationId, input));
         });
     }
@@ -56,22 +57,36 @@ public final class SavedLocationsInteractor implements SavedLocationsInputBounda
                 locations.remove(findIndex(locations, locationId)));
     }
 
+    private UserProfile loadProfile() throws DataAccessException {
+        return repository.load()
+                .orElseGet(() -> UserProfile.empty("local"));
+    }
+
     private void update(Consumer<List<SavedLocation>> change) {
-        List<SavedLocation> updated;
+        UserProfile updatedProfile;
 
         try {
-            // Work on a copy so a failed save cannot modify stored state.
-            updated = new ArrayList<>(repository.loadSavedLocations());
-            change.accept(updated);
-            repository.saveSavedLocations(updated);
+            UserProfile currentProfile = loadProfile();
+
+            List<SavedLocation> updatedLocations =
+                    new ArrayList<>(currentProfile.getSavedLocations());
+
+            change.accept(updatedLocations);
+
+            // Preserve preferences, subscriptions, bookmarks, and profile ID.
+            updatedProfile =
+                    currentProfile.withSavedLocations(updatedLocations);
+
+            repository.save(updatedProfile);
         }
-        catch (IllegalArgumentException | ProfileStorageException exception) {
+        catch (IllegalArgumentException | DataAccessException exception) {
             output.presentError(exception.getMessage());
             return;
         }
 
-        // Publish the new list only after persistence succeeds.
-        output.presentLocations(new SavedLocationsOutputData(updated));
+        // Update the screen only after saving succeeds.
+        output.presentLocations(
+                new SavedLocationsOutputData(updatedProfile.getSavedLocations()));
     }
 
     private static SavedLocation createLocation(
@@ -83,13 +98,23 @@ public final class SavedLocationsInteractor implements SavedLocationsInputBounda
             throw new IllegalArgumentException("Enter a location label.");
         }
 
+        double latitude = parseNumber(input.latitude, "Latitude");
+        double longitude = parseNumber(input.longitude, "Longitude");
+
+        if (latitude < -90 || latitude > 90) {
+            throw new IllegalArgumentException(
+                    "Latitude must be between -90 and 90.");
+        }
+        if (longitude < -180 || longitude > 180) {
+            throw new IllegalArgumentException(
+                    "Longitude must be between -180 and 180.");
+        }
+
         return new SavedLocation(
                 id,
-                input.label,
-                parseNumber(input.latitude, "Latitude"),
-                parseNumber(input.longitude, "Longitude"),
-                parseNumber(input.radiusMetres, "Radius")
-        );
+                input.label.strip(),
+                new Coordinates(latitude, longitude),
+                parseNumber(input.radiusMetres, "Radius"));
     }
 
     private static double parseNumber(String value, String field) {
@@ -97,13 +122,21 @@ public final class SavedLocationsInteractor implements SavedLocationsInputBounda
             throw new IllegalArgumentException(field + " is required.");
         }
 
+        double number;
         try {
-            return Double.parseDouble(value.strip());
+            number = Double.parseDouble(value.strip());
         }
         catch (NumberFormatException exception) {
             throw new IllegalArgumentException(
                     field + " must be a number, for example 43.66.");
         }
+
+        if (!Double.isFinite(number)) {
+            throw new IllegalArgumentException(
+                    field + " must be a finite number.");
+        }
+
+        return number;
     }
 
     private static int findIndex(List<SavedLocation> locations, String id) {

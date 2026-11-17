@@ -1,11 +1,19 @@
 package org.example.citywatch.use_case.gateway;
 
-import java.util.List;
-import org.example.citywatch.entity.SavedLocation;
+import java.util.Optional;
+
+import org.example.citywatch.entity.UserProfile;
 
 public interface ProfileRepository {
-    List<SavedLocation> loadSavedLocations();
+    /**
+     * Returns empty when no profile has been saved.
+     * Corrupt or unreadable storage throws DataAccessException.
+     */
+    Optional<UserProfile> load() throws DataAccessException;
 
-    // A failed save must leave previously saved locations unchanged.
-    void saveSavedLocations(List<SavedLocation> locations);
+    /**
+     * Saves the whole profile atomically.
+     * A failed save must preserve the previous profile file.
+     */
+    void save(UserProfile profile) throws DataAccessException;
 }

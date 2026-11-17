@@ -1,26 +1,32 @@
 package org.example.citywatch.test_support;
 
-import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
-import org.example.citywatch.entity.SavedLocation;
+import org.example.citywatch.entity.UserProfile;
+import org.example.citywatch.use_case.gateway.DataAccessException;
 import org.example.citywatch.use_case.gateway.ProfileRepository;
-import org.example.citywatch.use_case.gateway.ProfileStorageException;
 
+/**
+ * Test repository that stores a profile in memory.
+ * Data does not survive an application restart.
+ */
 public final class InMemoryProfileRepository implements ProfileRepository {
-    private List<SavedLocation> locations = List.of();
+    private UserProfile profile;
     private boolean failOnSave;
 
     @Override
-    public List<SavedLocation> loadSavedLocations() {
-        return List.copyOf(locations);
+    public Optional<UserProfile> load() {
+        return Optional.ofNullable(profile);
     }
 
     @Override
-    public void saveSavedLocations(List<SavedLocation> locations) {
+    public void save(UserProfile value) throws DataAccessException {
         if (failOnSave) {
-            throw new ProfileStorageException("Could not save. Please retry.");
+            throw new DataAccessException("Could not save. Please retry.");
         }
-        this.locations = List.copyOf(locations);
+
+        profile = Objects.requireNonNull(value, "Profile cannot be null.");
     }
 
     public void setFailOnSave(boolean failOnSave) {

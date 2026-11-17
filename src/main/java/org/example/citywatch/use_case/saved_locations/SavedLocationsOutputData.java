@@ -25,8 +25,8 @@ public final class SavedLocationsOutputData {
         private LocationData(SavedLocation location) {
             id = location.getId();
             label = location.getLabel();
-            latitude = location.getLatitude();
-            longitude = location.getLongitude();
+            latitude = location.getCoordinates().getLatitude();
+            longitude = location.getCoordinates().getLongitude();
             radiusMetres = location.getRadiusMetres();
         }
     }

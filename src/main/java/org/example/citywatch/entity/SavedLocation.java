@@ -1,43 +1,40 @@
 package org.example.citywatch.entity;
 
+import java.util.Objects;
+
 public final class SavedLocation {
     private final String id;
     private final String label;
-    private final double latitude;
-    private final double longitude;
+    private final Coordinates coordinates;
     private final double radiusMetres;
 
-    public SavedLocation(String id, String label, double latitude,
-                         double longitude, double radiusMetres) {
-        if (id == null || id.isBlank()) {
-            throw new IllegalArgumentException("Location ID is required.");
-        }
-        if (label == null || label.isBlank()) {
-            throw new IllegalArgumentException("Enter a location label.");
-        }
-        if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90) {
-            throw new IllegalArgumentException(
-                    "Latitude must be a finite number between -90 and 90.");
-        }
-        if (!Double.isFinite(longitude) || longitude < -180 || longitude > 180) {
-            throw new IllegalArgumentException(
-                    "Longitude must be a finite number between -180 and 180.");
-        }
+    public SavedLocation(String id, String label,
+                         Coordinates coordinates, double radiusMetres) {
         if (!Double.isFinite(radiusMetres) || radiusMetres <= 0) {
             throw new IllegalArgumentException(
-                    "Radius must be a finite number greater than zero metres.");
+                    "Radius must be finite and positive.");
         }
 
-        this.id = id;
-        this.label = label.strip();
-        this.latitude = latitude;
-        this.longitude = longitude;
+        this.id = Checks.text(id);
+        this.label = Checks.text(label);
+        this.coordinates = Objects.requireNonNull(
+                coordinates, "Coordinates are required.");
         this.radiusMetres = radiusMetres;
     }
 
-    public String getId() { return id; }
-    public String getLabel() { return label; }
-    public double getLatitude() { return latitude; }
-    public double getLongitude() { return longitude; }
-    public double getRadiusMetres() { return radiusMetres; }
+    public String getId() {
+        return id;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    public Coordinates getCoordinates() {
+        return coordinates;
+    }
+
+    public double getRadiusMetres() {
+        return radiusMetres;
+    }
 }
