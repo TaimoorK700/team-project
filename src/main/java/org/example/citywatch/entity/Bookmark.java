@@ -22,7 +22,7 @@ public final class Bookmark {
 
     public Optional<String> getLastReviewedUpdateId() { return lastReviewedUpdateId; }
 
-    public Bookmark reviewedThrough(String updateId) {
+    public Bookmark markAsRead(String updateId) {
         return new Bookmark(incidentKey, savedAt, Optional.of(Checks.text(updateId)));
     }
 

@@ -44,7 +44,7 @@ public final class SharedContractsCheck {
         profile = profile.withBookmarks(Map.of(bookmark.getIncidentKey(), bookmark));
         profile = profile.withSavedLocations(List.of(new SavedLocation("home", "Home", new Coordinates(0, 0), 500)));
         check(profile.getBookmarks().size() == 1, "Location update lost bookmarks");
-        check(bookmark.reviewedThrough("update-1").getLastReviewedUpdateId().get().equals("update-1"), "Review not recorded");
+        check(bookmark.markAsRead("update-1").getLastReviewedUpdateId().get().equals("update-1"), "Review not recorded");
         check(!bookmark.getLastReviewedUpdateId().isPresent(), "Bookmark mutated");
         InMemoryProfileRepository profiles = new InMemoryProfileRepository();
         check(!profiles.load().isPresent(), "Uninitialized profile not empty");
