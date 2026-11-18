@@ -1,13 +1,19 @@
 package org.example.citywatch.use_case.gateway;
 
-import java.util.*;
-import java.time.*;
-import org.example.citywatch.entity.*;
+import java.util.Optional;
+
+import org.example.citywatch.entity.UserProfile;
 
 public interface ProfileRepository {
-    /** No profile yet is empty; corrupt/unreadable storage throws an exception. */
+    /**
+     * Returns empty when no profile has been saved.
+     * Corrupt or unreadable storage throws DataAccessException.
+     */
     Optional<UserProfile> load() throws DataAccessException;
 
-    /** Save the whole profile atomically; preserve the previous file on failure. */
+    /**
+     * Saves the whole profile atomically.
+     * A failed save must preserve the previous profile file.
+     */
     void save(UserProfile profile) throws DataAccessException;
 }
