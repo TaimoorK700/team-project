@@ -327,9 +327,21 @@ TBD
 
 ## How to Run
 
-[Instructions for running the program.]
+Run `org.example.citywatch.app.Main` from your IDE using Java 11 or later.
+It opens one CityWatch window with tabs for Saved Locations, Incident Preferences,
+Road Dashboard, TTC Disruptions, and Bookmarks. Unfinished features show placeholders.
 
-TBD
+### Registering a Feature View
+
+`AppBuilder` constructs each feature's view, controller, interactor, presenter, and
+view model. Replace the relevant placeholder in `build()` with the constructed
+view using `window.addView("Feature Name", view)`. `MainWindow` handles navigation
+and keeps the same view instances when switching tabs.
+
+Pass `AppBuilder`'s existing `profileRepository` to feature interactors so all
+features use the same local profile. When the report cache implementation is
+available, construct one shared instance in `AppBuilder` and pass it to each
+feature that needs it. Saved Locations is already wired through this builder.
 
 ---
 
