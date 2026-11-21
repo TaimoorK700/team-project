@@ -9,6 +9,9 @@ import com.google.transit.realtime.GtfsRealtime.Alert;
 import com.google.transit.realtime.GtfsRealtime.FeedEntity;
 import com.google.transit.realtime.GtfsRealtime.FeedMessage;
 import org.example.citywatch.entity.*;
+import org.example.citywatch.use_case.gateway.IncidentFeed;
+import org.example.citywatch.use_case.gateway.IncidentFetchResult;
+import org.example.citywatch.use_case.gateway.IncidentSnapshot;
 
 import java.io.IOException;
 import java.net.URI;
@@ -21,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class TtcAlertsFeed {
+public class TtcAlertsFeed implements IncidentFeed {
     static final String ALERT_URL = "https://gtfsrt.ttc.ca/alerts/all?format=binary";
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -130,5 +133,54 @@ public class TtcAlertsFeed {
             }
         }
         return fallBack;
+    }
+
+    @Override
+    public IncidentSource getSource() {
+        return IncidentSource.TTC;
+    }
+
+    /** Downloads, parses and converts TTC alerts. */
+    @Override
+    public IncidentFetchResult fetch() {
+        FeedMessage feed;
+        try {
+            feed = parseFeed(downloadFeed());
+        } catch (IOException e) {
+            return IncidentFetchResult.failed(IncidentSource.TTC, "could not load TTC alerts: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return IncidentFetchResult.failed(IncidentSource.TTC, "TTC alerts request was interrupted");
+        }
+        return toResult(feed, Instant.now());
+    }
+
+    static IncidentFetchResult toResult(FeedMessage feed, Instant retrievedAt) {
+        List<Incident> incidents = new ArrayList<>();
+        int skipped = 0;
+        for (FeedEntity entity : feed.getEntityList()) {
+            if (!entity.hasAlert()) {
+                continue;
+            }
+            try {
+                Optional<Incident> incident = toIncident(entity);
+                if (incident.isPresent()) {
+                    incidents.add(incident.get());
+                } else {
+                    skipped++;
+                }
+            } catch (IllegalArgumentException e) {
+                skipped++;
+            }
+        }
+
+        if (skipped > 0 ) {
+            return IncidentFetchResult.incomplete(IncidentSource.TTC, skipped + " TTC alerts could not be converted");
+        }
+        try {
+            return IncidentFetchResult.complete(new IncidentSnapshot(IncidentSource.TTC, retrievedAt, incidents));
+        } catch (IllegalArgumentException e) {
+            return IncidentFetchResult.incomplete(IncidentSource.TTC, "TTC feed has duplicate alert ids");
+        }
     }
 }
