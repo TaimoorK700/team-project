@@ -15,7 +15,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.sql.Time;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -46,7 +45,7 @@ public class TtcAlertsFeed {
     }
 
     static Optional<Incident> toIncident(FeedEntity entity) {
-        if (entity.getId().isBlank()) {
+        if (!entity.hasAlert() || entity.getId().isBlank()) {
             return Optional.empty();
         }
         Alert alert = entity.getAlert();
@@ -58,8 +57,8 @@ public class TtcAlertsFeed {
         IncidentKey key = new IncidentKey(IncidentSource.TTC, entity.getId());
         Incident.Builder builder = Incident.builder(key, title.get());
 
-        Optional<String> s = firstText(alert.getDescriptionText());
-        s.ifPresent(builder::description);
+        firstText(alert.getDescriptionText()).ifPresent(builder::description);
+        firstText(alert.getUrl()).ifPresent(builder::sourceUrl);
 
         if (alert.hasEffect()) {
             builder.category(alert.getEffect().name());
@@ -103,7 +102,7 @@ public class TtcAlertsFeed {
         for (TimeRange range : ranges) {
             Optional<Instant> start = Optional.empty();
             if (range.hasStart() && range.getStart() > 0) {
-                start = Optional.of(Instant.ofEpochSecond(range.getEnd()));
+                start = Optional.of(Instant.ofEpochSecond(range.getStart()));
             }
 
             Optional<Instant> end = Optional.empty();
