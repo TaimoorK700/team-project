@@ -17,6 +17,11 @@ import org.example.citywatch.use_case.gateway.ProfileRepository;
 import org.example.citywatch.use_case.saved_locations.SavedLocationsInteractor;
 import org.example.citywatch.view.MainWindow;
 import org.example.citywatch.view.saved_locations.SavedLocationsView;
+import org.example.citywatch.interface_adapter.incident_preferences.IncidentPreferencesController;
+import org.example.citywatch.interface_adapter.incident_preferences.IncidentPreferencesPresenter;
+import org.example.citywatch.interface_adapter.incident_preferences.IncidentPreferencesViewModel;
+import org.example.citywatch.use_case.incident_preferences.IncidentPreferencesInteractor;
+import org.example.citywatch.view.incident_preferences.IncidentPreferencesView;
 
 public final class AppBuilder {
     // Share this repository with every feature that reads or changes the profile.
@@ -36,11 +41,11 @@ public final class AppBuilder {
     public JFrame build() {
         MainWindow window = new MainWindow();
         SavedLocationsView savedLocations = createSavedLocationsView();
+        IncidentPreferencesView preferences = createIncidentPreferencesView();
 
         // Replace placeholders with wired feature views as they become available.
         window.addView("Saved Locations", savedLocations);
-        window.addView("Incident Preferences",
-                placeholder("Incident preferences are coming soon."));
+        window.addView("Incident Preferences", preferences);
         window.addView("Road Dashboard",
                 placeholder("The road dashboard is coming soon."));
         window.addView("TTC Disruptions",
@@ -51,6 +56,7 @@ public final class AppBuilder {
         window.pack();
         window.setLocationRelativeTo(null);
         savedLocations.loadLocations();
+        preferences.loadPreferences();
         return window;
     }
 
@@ -63,6 +69,19 @@ public final class AppBuilder {
                 new SavedLocationsController(interactor);
 
         return new SavedLocationsView(controller, viewModel);
+    }
+
+    private IncidentPreferencesView createIncidentPreferencesView() {
+        IncidentPreferencesViewModel viewModel =
+                new IncidentPreferencesViewModel();
+        IncidentPreferencesPresenter presenter =
+                new IncidentPreferencesPresenter(viewModel);
+        IncidentPreferencesInteractor interactor =
+                new IncidentPreferencesInteractor(profileRepository, presenter);
+        IncidentPreferencesController controller =
+                new IncidentPreferencesController(interactor);
+
+        return new IncidentPreferencesView(controller, viewModel);
     }
 
     private JPanel placeholder(String message) {
