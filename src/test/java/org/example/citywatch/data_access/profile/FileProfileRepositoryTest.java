@@ -140,6 +140,52 @@ class FileProfileRepositoryTest {
         assertEquals("existing contents", Files.readString(blockingFile));
     }
 
+    @Test
+    void roundTripsDefaultProfileWithEmptySections() throws Exception {
+        Path file = directory.resolve("profile.properties");
+        UserProfile expected = UserProfile.empty("local");
+
+        new FileProfileRepository(file).save(expected);
+
+        UserProfile reopened =
+                new FileProfileRepository(file).load().orElseThrow();
+
+        assertProfileEquals(expected, reopened);
+    }
+
+    @Test
+    void preservesSourceKeysAndReviewMarkersAcrossReload() throws Exception {
+        Path file = directory.resolve("profile.properties");
+
+        IncidentKey roadKey = new IncidentKey(
+                IncidentSource.TORONTO_ROAD, "same-provider-id");
+        IncidentKey ttcKey = new IncidentKey(
+                IncidentSource.TTC, "same-provider-id");
+
+        Instant savedAt = Instant.parse("2026-11-17T12:00:00Z");
+
+        Bookmark roadBookmark = new Bookmark(
+                roadKey,
+                savedAt,
+                Optional.of("road-update-1"));
+
+        Bookmark ttcBookmark = new Bookmark(
+                ttcKey,
+                savedAt,
+                Optional.empty());
+
+        UserProfile expected = sampleProfile().withBookmarks(Map.of(
+                roadKey, roadBookmark,
+                ttcKey, ttcBookmark));
+
+        new FileProfileRepository(file).save(expected);
+
+        UserProfile reopened =
+                new FileProfileRepository(file).load().orElseThrow();
+
+        assertProfileEquals(expected, reopened);
+    }
+
     private static UserProfile sampleProfile() {
         UserPreferences preferences = new UserPreferences(
                 Set.of("construction", "event"),
