@@ -1,5 +1,6 @@
 package org.example.citywatch.data_access.ttc;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.transit.realtime.GtfsRealtime.Alert;
 import com.google.transit.realtime.GtfsRealtime.EntitySelector;
 import com.google.transit.realtime.GtfsRealtime.FeedEntity;
@@ -14,6 +15,7 @@ import org.example.citywatch.entity.IncidentKey;
 import org.example.citywatch.entity.IncidentSource;
 import org.example.citywatch.entity.TransitScope;
 
+import org.example.citywatch.use_case.gateway.IncidentFetchResult;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -23,6 +25,9 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class TtcAlertsFeedTest {
+
+    // Fixed time so results are the same every run
+    private static final Instant RETRIEVED_AT = Instant.parse("2026-02-07T00:00:00Z");
 
     // ------------- helpers for building sample responses -------------
 
@@ -153,5 +158,61 @@ public class TtcAlertsFeedTest {
         FeedEntity entity = FeedEntity.newBuilder().setId("5").setAlert(Alert.newBuilder().build()).build();
 
         assertTrue(TtcAlertsFeed.toIncident(entity).isEmpty());
+    }
+
+    // ------------- toResult tests -------------
+
+    // Success case: a feed of good alerts is COMPLETE and keeps every alert
+    @Test
+    void testToResultValidFeed() {
+        IncidentFetchResult result = TtcAlertsFeed.toResult(feedOf(routeAndStopAlert()), RETRIEVED_AT);
+        assertEquals(IncidentFetchResult.Outcome.COMPLETE, result.getOutcome());
+        assertEquals(1, result.getSnapshot().orElseThrow().getIncidents().size());
+        assertEquals(RETRIEVED_AT, result.getSnapshot().orElseThrow().getRetrievedAt());
+    }
+
+    // Boundary case: an empty feed is COMPLETE, with no incidents
+    @Test
+    void testToResultZeroAlerts() {
+        IncidentFetchResult result = TtcAlertsFeed.toResult(feedOf(), RETRIEVED_AT);
+
+        assertEquals(IncidentFetchResult.Outcome.COMPLETE, result.getOutcome());
+
+        assertTrue(result.getSnapshot().orElseThrow().getIncidents().isEmpty());
+    }
+
+    // Atypical behaviour: one alert that cannot be converted makes the result INCOMPLETE
+    @Test
+    void testToResultUnconvertibleAlert() {
+        FeedEntity noHeader = FeedEntity.newBuilder().setId("6").setAlert(Alert.newBuilder().build()).build();
+
+        IncidentFetchResult result = TtcAlertsFeed.toResult(feedOf(routeAndStopAlert(), noHeader), RETRIEVED_AT);
+
+        assertEquals(IncidentFetchResult.Outcome.INCOMPLETE, result.getOutcome());
+        assertTrue(result.getSnapshot().isEmpty());
+    }
+
+    // Atypical behaviour: two alerts with the same id make the result INCOMPLETE
+    @Test
+    void testToResultDuplicateIds() {
+        IncidentFetchResult result = TtcAlertsFeed.toResult(feedOf(routeAndStopAlert(), routeAndStopAlert()), RETRIEVED_AT);
+
+        assertEquals(IncidentFetchResult.Outcome.INCOMPLETE, result.getOutcome());
+    }
+
+    // ---------- parseFeed and getSource tests ----------
+
+    // Atypical behaviour: bytes that are not protobuf throw
+    @Test
+    void testParseFeedInvalidBytes() {
+        byte[] notProtobuf = "<html>Service unavailable</html>".getBytes();
+
+        assertThrows(InvalidProtocolBufferException.class, () -> TtcAlertsFeed.parseFeed(notProtobuf));
+    }
+
+    // Success case: the feed reports TTC as its source
+    @Test
+    void testGetSource() {
+        assertEquals(IncidentSource.TTC, new TtcAlertsFeed().getSource());
     }
 }
