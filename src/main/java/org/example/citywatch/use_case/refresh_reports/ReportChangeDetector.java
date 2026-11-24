@@ -8,7 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.StringJoiner;
+import java.util.UUID;
 import java.util.function.Function;
 
 import org.example.citywatch.entity.Coordinates;
@@ -155,27 +155,31 @@ public class ReportChangeDetector {
 
     /**
      * Joins a list into one text value, separated by ";".
+     * Each item is converted to text first and the texts are sorted, so the result does not
+     * depend on the order the provider listed them in. Each item stays one unit (a scope keeps
+     * its route and stop together), and duplicates are kept.
      */
     private static <T> Optional<String> joined(List<T> items, Function<T, String> toText) {
         if (items.isEmpty()) {
             return Optional.empty();
         }
-        StringJoiner joiner = new StringJoiner("; ");
+        List<String> texts = new ArrayList<>();
         for (T item : items) {
-            joiner.add(toText.apply(item));
+            texts.add(toText.apply(item));
         }
-        return Optional.of(joiner.toString());
+        texts.sort(null);
+        return Optional.of(String.join("; ", texts));
     }
 
     /**
-     * Creates one update record with an ID in the format of key@milliseconds.
-     * toEpochMilli() calculates the amount of milliseconds since Jan 1, 1970, 00:00 UTC;
-     * milliseconds are used here to produce an ID-like number.
+     * Creates one update record with a random UUID as its ID.
+     * The ID must not be derived from the observation time: two refreshes within the same
+     * millisecond would otherwise produce the same ID, which the IncidentCache rejects.
      */
     private static IncidentUpdate update(IncidentKey key, Instant observedAt,
                                          IncidentUpdate.Kind kind,
                                          Map<String, FieldChange> changes) {
-        String id = key + "@" + observedAt.toEpochMilli();
+        String id = UUID.randomUUID().toString();
         return new IncidentUpdate(id, key, observedAt, kind, changes);
     }
 }
