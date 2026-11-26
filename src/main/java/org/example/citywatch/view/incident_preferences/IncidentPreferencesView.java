@@ -4,7 +4,8 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.GridLayout;
 import java.time.Duration;
-import java.util.List;
+import org.example.citywatch.entity.RankingPreset;
+import org.example.citywatch.entity.RankingWeights;
 import java.util.Optional;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
@@ -31,10 +32,8 @@ public final class IncidentPreferencesView extends JPanel {
     private final JComboBox<AgeOption> ageChoices = new JComboBox<>();
     private final JCheckBox includeUnknownTimes = new JCheckBox("Include");
 
-    private final JTextField proximityField = new JTextField(8);
-    private final JTextField recencyField = new JTextField(8);
-    private final JTextField categoryField = new JTextField(8);
-    private final JTextField severityField = new JTextField(8);
+    private final JComboBox<RankingOption> rankingChoices = new JComboBox<>();
+    private final JTextArea rankingDescription = new JTextArea(2, 28);
 
     private final JButton saveButton = new JButton("Save preferences");
     private final JButton reloadButton = new JButton("Reload");
@@ -61,8 +60,7 @@ public final class IncidentPreferencesView extends JPanel {
                 "Last 7 days", Optional.of(Duration.ofDays(7))));
 
         add(new JLabel(
-                        "Leave categories empty for all categories. "
-                                + "Larger weights give a factor more influence."),
+                        "Leave categories empty for all categories. "),
                 BorderLayout.NORTH);
 
         JPanel form = new JPanel(new GridLayout(0, 2, 8, 8));
@@ -72,14 +70,19 @@ public final class IncidentPreferencesView extends JPanel {
         form.add(ageChoices);
         form.add(new JLabel("Reports with unknown timestamps"));
         form.add(includeUnknownTimes);
-        form.add(new JLabel("Proximity weight"));
-        form.add(proximityField);
-        form.add(new JLabel("Recency weight"));
-        form.add(recencyField);
-        form.add(new JLabel("Category weight"));
-        form.add(categoryField);
-        form.add(new JLabel("Severity weight"));
-        form.add(severityField);
+        rankingDescription.setEditable(false);
+        rankingDescription.setFocusable(false);
+        rankingDescription.setOpaque(false);
+        rankingDescription.setLineWrap(true);
+        rankingDescription.setWrapStyleWord(true);
+        rankingDescription.setFont(categoriesField.getFont());
+
+        form.add(new JLabel("Ranking preference"));
+        form.add(rankingChoices);
+        form.add(new JLabel(" "));
+        form.add(rankingDescription);
+
+        rankingChoices.addActionListener(event -> updateRankingDescription());
 
         JPanel formContainer = new JPanel(new BorderLayout());
         formContainer.add(form, BorderLayout.NORTH);
@@ -125,23 +128,21 @@ public final class IncidentPreferencesView extends JPanel {
         String categories = categoriesField.getText();
         AgeOption age = (AgeOption) ageChoices.getSelectedItem();
         boolean unknownTimes = includeUnknownTimes.isSelected();
-        String proximity = proximityField.getText();
-        String recency = recencyField.getText();
-        String category = categoryField.getText();
-        String severity = severityField.getText();
+        RankingOption ranking = (RankingOption) rankingChoices.getSelectedItem();
 
-        if (age == null) {
+        if (age == null || ranking == null) {
             return;
         }
 
+        RankingWeights weights = ranking.weights;
         runAsync(() -> controller.save(
                 categories,
                 age.maximumAge,
                 unknownTimes,
-                proximity,
-                recency,
-                category,
-                severity));
+                Double.toString(weights.getProximity()),
+                Double.toString(weights.getRecency()),
+                Double.toString(weights.getCategory()),
+                Double.toString(weights.getSeverity())));
     }
 
     private void populate(IncidentPreferencesOutputData data) {
@@ -149,15 +150,53 @@ public final class IncidentPreferencesView extends JPanel {
                 String.join(", ", new TreeSet<>(data.categories)));
         selectAge(data.maximumAge);
         includeUnknownTimes.setSelected(data.includeUnknownTimes);
-        proximityField.setText(Double.toString(data.proximityWeight));
-        recencyField.setText(Double.toString(data.recencyWeight));
-        categoryField.setText(Double.toString(data.categoryWeight));
-        severityField.setText(Double.toString(data.severityWeight));
+
+        selectRanking(new RankingWeights(
+                data.proximityWeight,
+                data.recencyWeight,
+                data.categoryWeight,
+                data.severityWeight));
 
         loaded = true;
         statusArea.setForeground(new Color(0, 110, 0));
         statusArea.setText(data.saved ? "Preferences saved." : "");
         updateControls();
+    }
+
+    private void selectRanking(RankingWeights savedWeights) {
+        rankingChoices.removeAllItems();
+
+        RankingOption selected = null;
+
+        for (RankingPreset preset : RankingPreset.values()) {
+            RankingOption option = new RankingOption(
+                    preset.getLabel(),
+                    preset.getDescription(),
+                    preset.getWeights());
+
+            rankingChoices.addItem(option);
+
+            if (selected == null && preset.matches(savedWeights)) {
+                selected = option;
+            }
+        }
+
+        if (selected == null) {
+            selected = new RankingOption(
+                    "Custom",
+                    "Keep your previously saved custom ranking settings.",
+                    savedWeights);
+
+            rankingChoices.addItem(selected);
+        }
+
+        rankingChoices.setSelectedItem(selected);
+        updateRankingDescription();
+    }
+
+    private void updateRankingDescription() {
+        RankingOption selected = (RankingOption) rankingChoices.getSelectedItem();
+        rankingDescription.setText(selected == null ? "" : selected.description);
     }
 
     private void selectAge(Optional<Duration> maximumAge) {
@@ -177,17 +216,11 @@ public final class IncidentPreferencesView extends JPanel {
     private void updateControls() {
         boolean editable = loaded && !busy;
 
-        for (JTextField field : List.of(
-                categoriesField,
-                proximityField,
-                recencyField,
-                categoryField,
-                severityField)) {
-            field.setEnabled(editable);
-        }
-
+        categoriesField.setEnabled(editable);
         ageChoices.setEnabled(editable);
         includeUnknownTimes.setEnabled(editable);
+        rankingChoices.setEnabled(editable);
+
         saveButton.setEnabled(editable);
         reloadButton.setEnabled(!busy);
     }
@@ -230,6 +263,26 @@ public final class IncidentPreferencesView extends JPanel {
                 }
             }
         }.execute();
+    }
+
+    private static final class RankingOption {
+        private final String label;
+        private final String description;
+        private final RankingWeights weights;
+
+        private RankingOption(
+                String label,
+                String description,
+                RankingWeights weights) {
+            this.label = label;
+            this.description = description;
+            this.weights = weights;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
     }
 
     private static final class AgeOption {
