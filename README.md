@@ -287,15 +287,23 @@ The application calculates a report's relevance for the current user and matchin
 
 ## API Usage
 
-The MVP plans to use the following two integrations. The team will verify endpoint access, available response fields, and any usage requirements with runnable Java requests before completing the adapters.
+### City of Toronto Road Restrictions
 
-**API Name:** City of Toronto Road Restrictions Feed
+CityWatch reads the [Toronto Road Restrictions v3 JSON feed](https://secure.toronto.ca/opendata/cart/road_restrictions/v3?format=json). The verified response contains a single top-level `Closure` array and has no pagination fields. See the [City of Toronto dataset documentation](https://open.toronto.ca/dataset/road-restrictions/).
 
-**Documentation:** [Road Restrictions Dataset](https://open.toronto.ca/dataset/road-restrictions/).
+To repeat the Java request, run `java RoadFeedProbe.java` from the repository root. The probe prints the HTTP status and writes the response to `road-restrictions.json`.
 
-**How it is used in the program:**
+| Toronto field | CityWatch field |
+| --- | --- |
+| `id` | `IncidentKey` with source `TORONTO_ROAD` and the full provider ID |
+| `name`, `road` | `title` uses `name` with `road` as a fallback. `street` uses `road`. |
+| `type`, `description`, `URL` | `category`, `description`, `sourceUrl` |
+| `latitude`, `longitude` | `coordinates`, created when both values are present |
+| `startTime`, `endTime` | Bounds of an `EffectivePeriod`, parsed as Unix milliseconds |
+| `createdTime`, `lastUpdated` | `reportedAt` and `sourceUpdatedAt`, parsed as Unix milliseconds |
+| `currImpact` | `severity`, using the provider's current impact text |
 
-The road restrictions adapter would retrieve supported reports and convert them into `Incident` entities. The nearby dashboard would use available street details, coordinates, restriction types, and timing information to filter and rank reports. The shared refresh use case would use source record IDs to detect changes and keep bookmarked road reports up to date.
+Missing optional values stay empty. A complete response can contain zero restrictions. Request errors and invalid responses return `FAILED`. A record that cannot be mapped or a duplicate ID returns `INCOMPLETE`. Only `COMPLETE` results carry a snapshot that refresh can use.
 
 **API Name:** TTC GTFS-Realtime (GTFS-RT)
 
